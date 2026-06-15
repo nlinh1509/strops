@@ -1,18 +1,16 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import CredentialsProvider from "next-auth/providers/credentials"; // BƯỚC 1: Import công cụ đăng nhập bằng mật khẩu
+import CredentialsProvider from "next-auth/providers/credentials";
 import { supabaseAdmin } from "@/lib/supabase";
-import bcrypt from "bcryptjs"; // BƯỚC 2: Import công cụ kiểm tra mật khẩu đã băm
+import bcrypt from "bcryptjs";
 
 const handler = NextAuth({
   providers: [
-    // --- 1. ĐĂNG NHẬP BẰNG GOOGLE (Giữ nguyên của bà) ---
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID as string,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
     }),
 
-    // --- 2. ĐĂNG NHẬP BẰNG EMAIL/MẬT KHẨU (Mới thêm) ---
     CredentialsProvider({
       name: "Credentials",
       credentials: {
@@ -39,11 +37,16 @@ const handler = NextAuth({
 
         // Nếu email không có trong DB, HOẶC có nhưng không có password (nghĩa là user này tạo bằng Google)
         if (!user || !user.password) {
-          throw new Error("Tài khoản không tồn tại hoặc bạn đang dùng Google để đăng nhập!");
+          throw new Error(
+            "Tài khoản không tồn tại hoặc bạn đang dùng Google để đăng nhập!",
+          );
         }
 
         // Đọ sức mật khẩu: So sánh pass người dùng nhập với cái chuỗi băm trong DB
-        const isPasswordMatch = await bcrypt.compare(credentials.password, user.password);
+        const isPasswordMatch = await bcrypt.compare(
+          credentials.password,
+          user.password,
+        );
 
         if (!isPasswordMatch) {
           throw new Error("Mật khẩu không chính xác!");
@@ -64,22 +67,22 @@ const handler = NextAuth({
   },
   callbacks: {
     async signIn({ user, account }) {
-      // Logic xử lý khi đăng nhập Google (Giữ nguyên của bà)
       if (account?.provider === "google") {
         try {
+          // Lấy cả id luôn
           const { data: existingUser, error: selectError } = await supabaseAdmin
             .from("users")
-            .select("email")
+            .select("id, email")
             .eq("email", user.email)
             .maybeSingle();
 
-          if (selectError) {
-            console.error("Lỗi tìm user:", selectError);
-            return false;
-          }
+          if (selectError) return false;
 
           if (!existingUser) {
-            const { error: insertError } = await supabaseAdmin
+            console.log("🚀 [BẮT ĐẦU] Đang tạo user mới...");
+
+            // 1. Tạo user trong bảng users
+            const { data: newUser, error: insertError } = await supabaseAdmin
               .from("users")
               .insert([
                 {
@@ -87,22 +90,71 @@ const handler = NextAuth({
                   name: user.name,
                   avatar_url: user.image,
                 },
-              ]);
+              ])
+              .select("id")
+              .single();
 
             if (insertError) {
-              console.error("Lỗi tạo user mới:", insertError);
+              console.error("❌ [LỖI 1] Lỗi khi tạo bảng users:", insertError);
               return false;
             }
+
+            console.log("✅ [THÀNH CÔNG 1] Đã tạo user, ID là:", newUser.id);
+            console.log("🚀 [TIẾP TỤC] Bắt đầu tạo profile tương ứng...");
+
+            // 2. Tạo profile trống tương ứng trong bảng profiles
+            const { error: profileError } = await supabaseAdmin
+              .from("profiles")
+              .insert([
+                {
+                  id: newUser.id,
+                  display_name: user.name,
+                  avatar_url: user.image,
+                },
+              ]);
+
+            if (profileError) {
+              console.error(
+                "❌ [LỖI 2] Lỗi khi tạo bảng profiles:",
+                profileError,
+              );
+            } else {
+              console.log("✅ [THÀNH CÔNG 2] Đã tạo profile xong xuôi!");
+            }
+
+            user.id = newUser.id;
           }
-          return true; // Cho phép đăng nhập Google thành công
+          return true;
         } catch (error) {
-          console.error("Lỗi hệ thống:", error);
           return false;
         }
       }
-      
-      // Nếu đăng nhập bằng Email/Pass, hàm authorize ở trên đã kiểm tra hết rồi, xuống đây chỉ việc cho qua thôi
-      return true; 
+      return true;
+    },
+
+    // THÊM CALLBACKS SESSION & JWT ĐỂ GIỮ LẠI USER.ID
+    async jwt({ token, user }) {
+      // Khi user vừa đăng nhập xong
+      if (user) {
+        // Tìm xem user này trong Supabase có ID là gì
+        const { data } = await supabaseAdmin
+          .from("users")
+          .select("id")
+          .eq("email", user.email) // Hoặc eq username/sdt sau này
+          .single();
+
+        if (data) {
+          token.id = data.id; // Gắn chuẩn UUID của Supabase vào token
+        }
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user && token) {
+        // Nhét id từ token sang session để lúc nào mình gọi useSession() cũng lấy được
+        (session.user as any).id = token.id;
+      }
+      return session;
     },
   },
   secret: process.env.NEXTAUTH_SECRET,

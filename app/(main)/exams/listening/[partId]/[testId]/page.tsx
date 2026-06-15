@@ -4,7 +4,7 @@ import Part3Layout from "@/components/layouts/Part3Layout";
 import Part4Layout from "@/components/layouts/Part4Layout";
 import { supabase } from "@/lib/supabase";
 
-import { mockPart2, mockPart3 } from "@/data/mockData";
+import { mockPart3 } from "@/data/mockData"; // Đã xóa mockPart2 đi
 
 // --- ĐỊNH NGHĨA KIỂU DỮ LIỆU TỪ SUPABASE CHO LISTENING ---
 // (Lưu ý: Giữ nguyên như cũ, vì từ DB có thể ra null)
@@ -97,25 +97,24 @@ export default async function ListeningTestPage({
           <h2 className="text-2xl font-bold text-slate-700">
             Chưa có dữ liệu Part 1
           </h2>
-
         </div>
       );
     }
 
     const typedGroups = groups as unknown as DBQuestionGroup[];
 
-    // 🔥 ĐOẠN NÀY QUAN TRỌNG: LÀM SẠCH VÀ CHUẨN HÓA DATA TRƯỚC KHI ĐƯA VÀO LAYOUT
+    // 🔥 LÀM SẠCH VÀ CHUẨN HÓA DATA TRƯỚC KHI ĐƯA VÀO LAYOUT
     const cleanPart1Data = typedGroups.map((group) => ({
       id: group.id,
       passage_text: group.passage_text || "",
-      audio_url: group.audio_url || "", // Đảm bảo luôn là chuỗi, không bao giờ null
+      audio_url: group.audio_url || "", 
       questions: group.questions
         .sort((a, b) => a.question_number - b.question_number)
         .map((q) => ({
           id: q.id,
           question_number: q.question_number,
           content: q.content || "",
-          image_url: q.image_url || "", // Rút kinh nghiệm, ép nó thành chuỗi rỗng nếu DB trả null
+          image_url: q.image_url || "", 
           option_a: q.option_a || "",
           option_b: q.option_b || "",
           option_c: q.option_c || "",
@@ -125,18 +124,70 @@ export default async function ListeningTestPage({
         })),
     }));
 
-    // Truyền DATA ĐÃ LÀM SẠCH vào Layout
     return <Part1Layout data={cleanPart1Data} />;
   }
 
   // ====================================================================
-  // XỬ LÝ PART 2, 3, 4 (Tạm thời giữ placeholder)
+  // XỬ LÝ PART 2
   // ====================================================================
   if (partId === "part-2") {
-    // Truyền tạm data giả vào để render giao diện
-    return <Part2Layout data={mockPart2} />;
+    const { data: groups, error } = await supabase
+      .from("question_groups")
+      .select(
+        `
+        id,
+        passage_text,
+        audio_url,
+        questions (
+          id, question_number, content, option_a, option_b, option_c, option_d, correct_answer, explanation
+        )
+      `,
+      )
+      .eq("exam_id", realExamId)
+      .eq("part", 2)
+      .order("id", { ascending: true });
+
+    if (error || !groups || groups.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh]">
+          <span className="material-symbols-outlined text-6xl text-slate-300 mb-4">
+            headset_off
+          </span>
+          <h2 className="text-2xl font-bold text-slate-700">
+            Chưa có dữ liệu Part 2
+          </h2>
+        </div>
+      );
+    }
+
+    const typedGroups = groups as unknown as DBQuestionGroup[];
+
+    // 🔥 LÀM SẠCH DATA PART 2 (Không cần map image_url vì Part 2 không có ảnh)
+    const cleanPart2Data = typedGroups.map((group) => ({
+      id: group.id,
+      passage_text: group.passage_text || "",
+      audio_url: group.audio_url || "",
+      questions: group.questions
+        .sort((a, b) => a.question_number - b.question_number)
+        .map((q) => ({
+          id: q.id,
+          question_number: q.question_number,
+          content: q.content || "",
+          option_a: q.option_a || "",
+          option_b: q.option_b || "",
+          option_c: q.option_c || "",
+          option_d: q.option_d || "",
+          correct_answer: q.correct_answer || "",
+          explanation: q.explanation || "Chưa có giải thích.",
+        })),
+    }));
+
+    return <Part2Layout data={cleanPart2Data} />;
   }
 
+  // ====================================================================
+  // XỬ LÝ PART 3, 4 (Tạm thời giữ placeholder)
+  // ====================================================================
   if (partId === "part-3") {
     return <Part3Layout data={mockPart3} />;
   }
