@@ -26,7 +26,7 @@ export default async function Home() {
                 error
               </span>
               <p className="text-red-700 font-bold">
-                Lỗi kết nối: {error.message}
+                Lỗi kết nối: {error?.message}{" "}
               </p>
             </div>
           </div>
