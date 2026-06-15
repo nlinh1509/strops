@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import Hero from "../../components/Hero";
 import { supabase } from "../../lib/supabase";
 
@@ -5,6 +6,8 @@ import { supabase } from "../../lib/supabase";
 export const revalidate = 0;
 
 export default async function Home() {
+  redirect("exams/listening");
+
   // Bốc thử dữ liệu từ mây về
   const { data: exams, error } = await supabase
     .from("exams")
